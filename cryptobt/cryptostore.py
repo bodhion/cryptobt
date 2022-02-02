@@ -1,9 +1,12 @@
+import os.path
 import time
 from datetime import datetime
 from functools import wraps
+from tscache import TimeSeriesCache
 
 import backtrader as bt
 import ccxt
+import tempfile
 from backtrader.metabase import MetaParams
 from backtrader.utils.py3 import with_metaclass
 from ccxt.base.errors import NetworkError, ExchangeError
@@ -72,7 +75,8 @@ class CryptoStore(with_metaclass(MetaSingleton, object)):
         '''Returns broker with *args, **kwargs from registered ``BrokerCls``'''
         return cls.BrokerCls(*args, **kwargs)
 
-    def __init__(self, exchange, currency, config, retries, debug=False, sandbox=False):
+    def __init__(self, exchange, currency, config, retries, debug=False, sandbox=False,
+                 cache_params={ "basedir": None, "limit": 1500, "block_size": 6000 }):
         self.exchange = getattr(ccxt, exchange)(config)
         if sandbox:
             self.exchange.set_sandbox_mode(True)
@@ -94,6 +98,19 @@ class CryptoStore(with_metaclass(MetaSingleton, object)):
                 self._value = balance['total'][currency]
         except KeyError:
             self._value = 0
+
+        if isinstance(cache_params, dict):
+            cache_path = cache_params.get("basedir") or os.path.join(tempfile.gettempdir(), "cryptobt")
+            fetch_limit = cache_params.get("limit") or 1500
+            block_size = cache_params.get("block_size") or 6000
+
+            def fetcher(symbol: str, granularity: str, start: datetime, limit: int):
+                since = int((start - datetime(1970, 1, 1)).total_seconds() * 1000)
+                return self.fetch_ohlcv(symbol, timeframe=granularity, since=since, limit=limit)
+
+            self.cache = TimeSeriesCache(cache_path, fetcher, fetch_limit, block_size)
+        else:
+            self.cache = None
 
     def get_granularity(self, timeframe, compression):
         if not self.exchange.has['fetchOHLCV']:

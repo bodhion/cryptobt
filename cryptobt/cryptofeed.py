@@ -114,91 +114,99 @@ class CryptoFeed(with_metaclass(MetaCryptoFeed, DataBase)):
     def _fetch_ohlcv(self, fromdate=None):
         """Fetch OHLCV data into self._data queue"""
         granularity = self.store.get_granularity(self._timeframe, self._compression)
-
-        till = int((self.p.todate - datetime(1970, 1, 1)).total_seconds() * 1000) if self.p.todate else None
-
-        if fromdate:
-            since = int((fromdate - datetime(1970, 1, 1)).total_seconds() * 1000)
-        else:
-            if self._last_ts > 0:
-                if self._ts_delta is None:
-                    since = self._last_ts
-                else:
-                    since = self._last_ts + self._ts_delta
-            else:
-                since = None
-
-        limit = self.p.ohlcv_limit
-
-        while True:
-            dlen = len(self._data)
-
-            if self.p.debug:
-                # TESTING
-                since_dt = datetime.utcfromtimestamp(since // 1000) if since is not None else 'NA'
-                print('---- NEW REQUEST ----')
-                print('{} - Requesting: Since TS:{} Since date:{} granularity:{}, limit:{}, params:{}'.format(
-                    datetime.utcnow(), since, since_dt, granularity, limit, self.p.fetch_ohlcv_params))
-                data = sorted(self.store.fetch_ohlcv(self.p.dataname, timeframe=granularity,
-                                                     since=since, limit=limit, params=self.p.fetch_ohlcv_params))
-                try:
-                    for i, ohlcv in enumerate(data):
-                        tstamp, open_, high, low, close, volume = ohlcv
-                        print('{} - Data {}: {} - TS {} Time {}'.format(datetime.utcnow(), i,
-                                                                        datetime.utcfromtimestamp(tstamp // 1000),
-                                                                        tstamp, (time.time() * 1000)))
-                        # ------------------------------------------------------------------
-                except IndexError:
-                    print('Index Error: Data = {}'.format(data))
-                print('---- REQUEST END ----')
-            else:
-
-                data = sorted(self.store.fetch_ohlcv(self.p.dataname, timeframe=granularity,
-                                                     since=since, limit=limit, params=self.p.fetch_ohlcv_params))
-
-            # Check to see if dropping the latest candle will help with
-            # exchanges which return partial data
+        if self.store.cache is not None and self.p.todate:
+            print("Loading from cache", self.p.dataname, granularity, fromdate, self.p.todate)
+            data = sorted(self.store.cache.query(self.p.dataname, granularity, fromdate, self.p.todate))
             if self.p.drop_newest:
                 del data[-1]
+            if len(data) > 0:
+                self._data.extend(data)
+                self._last_ts = data[-1][0]
+        else:
+            till = int((self.p.todate - datetime(1970, 1, 1)).total_seconds() * 1000) if self.p.todate else None
 
-            prev_tstamp = None
-            tstamp = None
-            for ohlcv in data:
-                if None in ohlcv:
-                    continue
+            if fromdate:
+                since = int((fromdate - datetime(1970, 1, 1)).total_seconds() * 1000)
+            else:
+                if self._last_ts > 0:
+                    if self._ts_delta is None:
+                        since = self._last_ts
+                    else:
+                        since = self._last_ts + self._ts_delta
+                else:
+                    since = None
 
-                tstamp = ohlcv[0]
+            limit = self.p.ohlcv_limit
 
-                if prev_tstamp is not None and self._ts_delta is None:
-                    # INFO: Record down the TS delta so that it can be used to increment since TS
-                    self._ts_delta = tstamp - prev_tstamp
+            while True:
+                dlen = len(self._data)
 
-                # Prevent from loading incomplete data
-                # if tstamp > (time.time() * 1000):
-                #    continue
+                if self.p.debug:
+                    # TESTING
+                    since_dt = datetime.utcfromtimestamp(since // 1000) if since is not None else 'NA'
+                    print('---- NEW REQUEST ----')
+                    print('{} - Requesting: Since TS:{} Since date:{} granularity:{}, limit:{}, params:{}'.format(
+                        datetime.utcnow(), since, since_dt, granularity, limit, self.p.fetch_ohlcv_params))
+                    data = sorted(self.store.fetch_ohlcv(self.p.dataname, timeframe=granularity,
+                                                         since=since, limit=limit, params=self.p.fetch_ohlcv_params))
+                    try:
+                        for i, ohlcv in enumerate(data):
+                            tstamp, open_, high, low, close, volume = ohlcv
+                            print('{} - Data {}: {} - TS {} Time {}'.format(datetime.utcnow(), i,
+                                                                            datetime.utcfromtimestamp(tstamp // 1000),
+                                                                            tstamp, (time.time() * 1000)))
+                            # ------------------------------------------------------------------
+                    except IndexError:
+                        print('Index Error: Data = {}'.format(data))
+                    print('---- REQUEST END ----')
+                else:
 
-                if tstamp > self._last_ts:
-                    if self.p.debug:
-                        print('Adding: {}'.format(ohlcv))
-                    self._data.append(ohlcv)
-                    self._last_ts = tstamp
+                    data = sorted(self.store.fetch_ohlcv(self.p.dataname, timeframe=granularity,
+                                                         since=since, limit=limit, params=self.p.fetch_ohlcv_params))
 
-                if till and tstamp >= till:
+                # Check to see if dropping the latest candle will help with
+                # exchanges which return partial data
+                if self.p.drop_newest:
+                    del data[-1]
+
+                prev_tstamp = None
+                tstamp = None
+                for ohlcv in data:
+                    if None in ohlcv:
+                        continue
+
+                    tstamp = ohlcv[0]
+
+                    if prev_tstamp is not None and self._ts_delta is None:
+                        # INFO: Record down the TS delta so that it can be used to increment since TS
+                        self._ts_delta = tstamp - prev_tstamp
+
+                    # Prevent from loading incomplete data
+                    # if tstamp > (time.time() * 1000):
+                    #    continue
+
+                    if tstamp > self._last_ts:
+                        if self.p.debug:
+                            print('Adding: {}'.format(ohlcv))
+                        self._data.append(ohlcv)
+                        self._last_ts = tstamp
+
+                    if till and tstamp >= till:
+                        break
+
+                    if prev_tstamp is None:
+                        prev_tstamp = tstamp
+
+
+                # print("?", tstamp, till, dlen, len(self._data))
+
+                if till and tstamp is not None:
+                    if tstamp >= till:
+                        break
+                    since = tstamp
+
+                if dlen == len(self._data):
                     break
-
-                if prev_tstamp is None:
-                    prev_tstamp = tstamp
-
-
-            # print("?", tstamp, till, dlen, len(self._data))
-
-            if till and tstamp is not None:
-                if tstamp >= till:
-                    break
-                since = tstamp
-            
-            if dlen == len(self._data):
-                break
 
     def _load_ticks(self):
         if self._last_id is None:
