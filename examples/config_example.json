@@ -1,0 +1,32 @@
+{
+  "exchange": "deribit",
+  "currency": "BTC",
+  "sandbox": true,
+  "retries": 5,
+  "cash": 1000000,
+  "commission": 0,
+  "ohlcv_limit": 1500,
+  "exchange_config": {
+    "apiKey": "",
+    "secret": "",
+    "enableRateLimit": true
+  },
+  "broker_mapping": {
+    "order_types": {
+      "bt.Order.Market": "market",
+      "bt.Order.Limit": "limit",
+      "bt.Order.Stop": "stop_market",
+      "bt.Order.StopLimit": "stop_limit"
+    },
+    "mappings":{
+      "closed_order":{
+        "key": "status",
+        "value":"closed"
+      },
+      "canceled_order": {
+        "key": "status",
+        "value": "cancelled"
+      }
+    }
+  }
+}
