@@ -231,6 +231,10 @@ class CryptoBroker(with_metaclass(MetaCryptoBroker, BrokerBase)):
                 self.use_order_params = False
                 return None
 
+        # the order could be intercepted
+        if ret_ord is None:
+            return None
+
         _order = self.store.fetch_order(ret_ord['id'], data.p.dataname)
 
         order = CryptoOrder(owner, data, _order)

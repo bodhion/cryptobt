@@ -2,11 +2,14 @@ from cryptobt import CryptoStore
 import backtrader as bt
 import json
 import os
-from datetime import datetime
+import pika
+from datetime import datetime, timedelta
 from strategy import TestStrategy
 
 
-def start(config, name, strategy, start, end=None, timeframe=bt.TimeFrame.Minutes, compression=1, debug=False):
+def start(config, name, strategy, start, end=None,
+          timeframe=bt.TimeFrame.Minutes, compression=1,
+          debug=False, order_interceptor=None):
     exchange = config.get("exchange")
     currency = config.get("currency")
     broker_mapping = config.get("broker_mapping")
@@ -22,7 +25,7 @@ def start(config, name, strategy, start, end=None, timeframe=bt.TimeFrame.Minute
 
     live = end is None
     store = CryptoStore(exchange=exchange, currency=currency, config=exchange_config,
-                        retries=retries, sandbox=sandbox, debug=debug)
+                        retries=retries, sandbox=sandbox, debug=debug, order_interceptor=order_interceptor)
 
     if live:
         broker = store.getbroker(broker_mapping=broker_mapping)
@@ -50,6 +53,34 @@ if __name__ == "__main__":
 
     with open("config.json", "r") as f:
         config = json.load(f)
-    start(config, "BTC-PERPETUAL",
-          strategy=TestStrategy, start=datetime(2022, 1, 1), end=datetime(2022, 2, 1),
-          timeframe=bt.TimeFrame.Minutes, compression=1, debug=True)
+
+    live = True
+    if live:
+        # Install docker and run following commands to start rabbitmq
+        # docker run -it --rm --name rabbitmq -p 5672:5672 -p 15672:15672 rabbitmq:3.9-management
+        connection = pika.BlockingConnection(
+            pika.ConnectionParameters(host='localhost'))
+        channel = connection.channel()
+        channel.exchange_declare(exchange='orders', exchange_type='fanout')
+
+        def order_interceptor(symbol, order_type, side, amount, price, params):
+            print("INTERCEPTED ORDER:", symbol, order_type, side, amount, price, params)
+            message = json.dumps({
+                "symbol": symbol,
+                "order_type": order_type,
+                "side": side,
+                "amount": amount,
+                "price": price,
+                "param": params
+            })
+            channel.basic_publish(exchange='orders', routing_key='', body=message)
+
+        start(config, "BTC-PERPETUAL",
+              strategy=TestStrategy, start=datetime.now() - timedelta(minutes=12*60),
+              timeframe=bt.TimeFrame.Minutes, compression=1, debug=True, order_interceptor=order_interceptor)
+
+        connection.close()
+    else:
+        start(config, "BTC-PERPETUAL",
+              strategy=TestStrategy, start=datetime(2022, 1, 1), end=datetime(2022, 2, 1),
+              timeframe=bt.TimeFrame.Minutes, compression=1, debug=True)

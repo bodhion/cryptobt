@@ -76,6 +76,7 @@ class CryptoStore(with_metaclass(MetaSingleton, object)):
         return cls.BrokerCls(*args, **kwargs)
 
     def __init__(self, exchange, currency, config, retries, debug=False, sandbox=False,
+                 order_interceptor=None,
                  cache_params={ "basedir": None, "limit": 1500, "block_size": 6000 }):
         self.exchange = getattr(ccxt, exchange)(config)
         if sandbox:
@@ -111,6 +112,8 @@ class CryptoStore(with_metaclass(MetaSingleton, object)):
             self.cache = TimeSeriesCache(cache_path, fetcher, fetch_limit, block_size)
         else:
             self.cache = None
+
+        self.order_interceptor = order_interceptor
 
     def get_granularity(self, timeframe, compression):
         if not self.exchange.has['fetchOHLCV']:
@@ -166,6 +169,9 @@ class CryptoStore(with_metaclass(MetaSingleton, object)):
 
     @retry
     def create_order(self, symbol, order_type, side, amount, price, params):
+        if self.order_interceptor is not None:
+            self.order_interceptor(symbol, order_type, side, amount, price, params)
+            return None
         # returns the order
         return self.exchange.create_order(symbol=symbol, type=order_type, side=side,
                                           amount=amount, price=price, params=params)

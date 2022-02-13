@@ -9,6 +9,7 @@ class NaiveLongShortStrategy(bt.Strategy):
         # To keep track of pending orders and buy price/commission
         self.order = None
 
+
     def notify_order(self, order):
         if order.status in [order.Submitted, order.Accepted]:
             return
@@ -25,7 +26,8 @@ class NaiveLongShortStrategy(bt.Strategy):
             return
 
         # Amount is quantity of the instrument equal to current portfolio value times quantity factor
-        amount = (self.broker.getvalue() * self.ratio) / self.dataclose[0]
+        amount = (self.broker.getvalue() * self.ratio)
+        # amount = (self.broker.getvalue() * self.ratio) / self.dataclose[0]
 
         pos = abs(self.position.size)
         buy_sig = self.buy_signal()

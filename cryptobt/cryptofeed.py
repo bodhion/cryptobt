@@ -166,7 +166,7 @@ class CryptoFeed(with_metaclass(MetaCryptoFeed, DataBase)):
 
                 # Check to see if dropping the latest candle will help with
                 # exchanges which return partial data
-                if self.p.drop_newest:
+                if self.p.drop_newest and len(data) > 0:
                     del data[-1]
 
                 prev_tstamp = None

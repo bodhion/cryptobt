@@ -2,7 +2,7 @@ from setuptools import setup
 
 setup(
    name='cryptobt',
-   version='1.0.1',
+   version='1.0.2',
    description='Crypto live data feed and trading support for backtrader',
    url='https://github.com/bodhion/cryptobt',
    author='bodhion',
